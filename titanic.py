@@ -3,25 +3,52 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
+from functions.functions import null_count_by_column, pivot_cat
 
-# Read train.csv as Pandas Dataframe
-df_train = pd.read_csv('sourceData/train.csv')
+# Loading data as pandas dataframe:
+df_train = pd.read_csv('sourceData/train.csv')  # Survival provided
+df_test = pd.read_csv('sourceData/test.csv')  # Survival not provided, to predict
+df_titanic = pd.read_csv('sourceData/titanic.csv')  # Full dataset for checking prediction accuracy
 
-# Read test.csv as Pandas Dataframe
-df_test = pd.read_csv('sourceData/test.csv')
+# Understanding the Data:
+# df_train.describe()
+# df_train.info()
 
-# Read titanic.csv as Pandas Dataframe
-df_titanic = pd.read_csv('sourceData/titanic.csv')
-
-# Print features for which values are NaN
-for col in df_train.columns:
-      n_missing = df_train[col].isnull().sum()
-      if n_missing > 0:
-            print(f'df_train[{col}] contains #{n_missing} missing values!')
-print(f'Conclusion 1: "Cabin" is a NON relevant feature as the majority of observations are missing \n')
+null_count_by_column(df_train)  # Print features for which values are null
+null_count_by_column(df_test)  #todo consider = .Age/Fare.fillna(df.Age/Fare.mean()
 
 col_num = ['Age', 'SibSp', 'Parch', 'Fare']
 col_cat = ['Survived', 'Pclass', 'Sex', 'Ticket', 'Cabin', 'Embarked']
+
+"""
+Clean the Data:
+"""
+
+df_train.dropna(subset=['Embarked'], inplace=True)  # Only 2 rows with missing values
+
+df_train['Cabin_n'] = df_train.Cabin.apply(lambda x: 0 if pd.isna(x) else len(x.split(' ')))  # 0 is NaN
+df_train['Cabin_section'] = df_train.Cabin.apply(lambda x: str(x)[0])
+df_train['Name_title'] = df_train.Name.apply(lambda x: x.split(',')[1].split('.')[0].strip())
+
+
+"""
+Explore the Data:
+"""
+
+pd.pivot_table(df_train, index='Survived', values=col_num)
+pivot_cat(df_train, ['Pclass', 'Sex', 'Embarked', 'Cabin_n', 'Cabin_section', 'Name_title'])
+
+"""
+Feature engineering:
+"""
+
+
+
+
+
+print(f'Conclusion 1: "Cabin" is a NON relevant feature as the majority of observations are missing \n')
+
+
 
 # Plot Histogram for numerical features
 for col in col_num:
