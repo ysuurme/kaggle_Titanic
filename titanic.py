@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import train_test_split
 from functions.functions import null_count_by_column, pivot_cat
 
 # Loading data as pandas dataframe:
@@ -17,19 +19,70 @@ df_titanic = pd.read_csv('sourceData/titanic.csv')  # Full dataset for checking 
 null_count_by_column(df_train)  # Print features for which values are null
 null_count_by_column(df_test)  #todo consider = .Age/Fare.fillna(df.Age/Fare.mean()
 
+null_count_by_column(X_test)  #todo consider = .Age/Fare.fillna(df.Age/Fare.mean()
+
 col_num = ['Age', 'SibSp', 'Parch', 'Fare']
 col_cat = ['Survived', 'Pclass', 'Sex', 'Ticket', 'Cabin', 'Embarked']
+# col_cat = list(df_train.select_dtypes(['object']).columns)  #todo assign based on dtype
 
 """
 Clean the Data:
 """
+X_train, X_test = df_train, df_test
+data = [X_train, X_test]
+for df in data:
 
-df_train.dropna(subset=['Embarked'], inplace=True)  # Only 2 rows with missing values
+      df.dropna(subset=['Embarked'], inplace=True)  # Embarked contains only 2 rows with missing values
 
-df_train['Cabin_n'] = df_train.Cabin.apply(lambda x: 0 if pd.isna(x) else len(x.split(' ')))  # 0 is NaN
-df_train['Cabin_section'] = df_train.Cabin.apply(lambda x: str(x)[0])
-df_train['Name_title'] = df_train.Name.apply(lambda x: x.split(',')[1].split('.')[0].strip())
+      df['Sex'] = df['Sex'].map({'male': 0, 'female': 1})  # Sex to 0-1
 
+      df['Cabin_n'] = df.Cabin.apply(lambda x: 0 if pd.isna(x) else len(x.split(' ')))  # 0 is NaN
+
+      df['Cabin_section'] = df.Cabin.apply(lambda x: str(x)[0])
+
+      df['Name_title'] = df.Name.apply(lambda x: x.split(',')[1].split('.')[0].strip())
+
+# Generate normally distributed values for "Age"
+      age_mean, age_std = df["Age"].mean(), df["Age"].std()
+      age_rand = np.random.normal(age_mean, age_std, df["Age"].isnull().sum()).astype(float)
+      age_rand = np.ndarray.round(np.sqrt(age_rand**2))  # only positive age rounded up
+      mask = df.loc[df['Age'].isnull()]
+      df.loc[mask.index, 'Age'] = age_rand
+
+# Generate mean value for missing "Fare"
+      fare_mean = df['Fare'].mean()
+      mask = df.loc[df['Fare'].isnull()]
+      df.loc[mask.index, 'Fare'] = fare_mean
+
+# OneHotEncoding Embarked
+# Apply one-hot encoder to each column with categorical data
+OH_encode_cols = ['Embarked']
+OH_encoder = OneHotEncoder(handle_unknown='ignore', sparse=False)
+OH_cols_train = pd.DataFrame(OH_encoder.fit_transform(X_train[OH_encode_cols]))
+OH_cols_test = pd.DataFrame(OH_encoder.transform(X_test[OH_encode_cols]))
+
+# One-hot encoding removed index; put it back
+OH_cols_train.index = X_train.index
+OH_cols_test.index = X_test.index
+
+#Label columns
+OH_cols_train = OH_cols_train.rename(columns={0: 'Embarked_C', 1: 'Embarked_Q', 2: 'Embarked_S'})
+OH_cols_test = OH_cols_test.rename(columns={0: 'Embarked_C', 1: 'Embarked_Q', 2: 'Embarked_S'})
+
+# Add one-hot encoded columns to numerical features
+X_train = pd.concat([X_train, OH_cols_train], axis=1)
+X_test = pd.concat([X_test, OH_cols_test], axis=1)
+
+
+# Determine one-hot or Ordinal encoding based on 'cardinality'
+object_nunique = list(map(lambda col: X_train[col].nunique(), object_cols))
+d = dict(zip(object_cols, object_nunique))
+# Print number of unique entries by column, in ascending order
+sorted(d.items(), key=lambda x: x[1])
+
+ord_encoder = OrdinalEncoder()  #todo ordinal encoding
+label_X_train[good_label_cols] = ord_encoder.fit_transform(X_train[good_label_cols])
+label_X_valid[good_label_cols] = ord_encoder.transform(X_valid[good_label_cols])
 
 """
 Explore the Data:
@@ -105,18 +158,7 @@ _ = plt.xlabel('Age')
 _ = plt.ylabel('Survived No (0) Yes (1)')
 plt.show()
 
-# Generate normally distributed values for "Age"
-age_mean = df_train["Age"].mean()
-age_std = df_train["Age"].std()
 
-# Compute random numbers between the mean, std and is_null
-data = [df_train, df_test]
-for d in data:
-      age_rand = np.random.normal(age_mean, age_std, d["Age"].isnull().sum()).astype(float)
-      age_rand = np.ndarray.round(np.sqrt(age_rand**2))  # only positive age rounded up
-
-      mask = d.loc[d['Age'].isnull()]
-      d.loc[mask.index, 'Age'] = age_rand
 print(f'Conclusion 3: "Age" is A relevant feature as younger people seem more likely to survive the Titanic\n')
 
 # Price Class relation to Survival
@@ -137,16 +179,25 @@ print(df_train[["Parch", "Survived"]].groupby(['Parch'], as_index=False).mean().
 print(f'Conclusion 6: "Parch" is A relevant feature as traveling with parents-child seems to indicate that it is more'
       f' likely to survive the Titanic\n')
 
+
+""""
+The steps to building and using a model are:
+
+Specify: Define the type of model that will be used, and the parameters of the model.
+Fit: Capture patterns from provided data. This is the heart of modeling.
+Predict: Predict the values for the prediction target (y)
+Evaluate: Determine how accurate the model's predictions are.
+"""
+
+model = RandomForestClassifier(n_estimators=100, random_state=1)
 # Train the random forest based on df features
-y = df_train["Survived"]
+features = ["Pclass", "Sex", "Age", "SibSp", "Parch", "Fare", "Embarked_C", "Embarked_Q", "Embarked_S"]
 
-features = ["Sex", "Age", "SibSp", "Parch", "Pclass"]
-x_train = pd.get_dummies(df_train[features])
-x_test = pd.get_dummies(df_test[features])
+X = X_train[features]
+y = X_train["Survived"]
 
-model = RandomForestClassifier(n_estimators=100, max_depth=4, random_state=1)
-model.fit(x_train, y)
-predictions = model.predict(x_test)
+model.fit(X, y)
+predictions = model.predict(X_test[features])
 
 fileName = 'outputData/survivor_estimation.csv'
 output = pd.DataFrame({'PassengerId': df_test.PassengerId, 'Survived': predictions})
