@@ -1,4 +1,5 @@
 import pandas as pd
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder
 
 def enc_1hot(df, col):
     """Returns the dataframe with 1 hot encoding of provided columns"""
@@ -23,18 +24,35 @@ def enc_ord(df, cols):
     df[f'ord_{col}'] = enc.transform(df[col])
     return df
 
+
+def enc_label(df, cols):
+    """"Returns the dataframe with label encoding of provided columns"""
+    enc = LabelEncoder()
+    for col in cols:
+        df[f'lab_{col}'] = enc.fit_transform(df[col])
+    return df
+
+
+def enc_freq(df, cols):
+    """"Returns the dataframe with frequency encoding of provided columns"""
+    for col in cols:
+        df[f'freq_{col}'] = df.groupby(col)[col].transform('count')
+    return df
+
+
 def imp_age(df):
     """Missing values in Age are filled with median age per Sex/Pclass group due to high correlation"""
     df_pivot = df.groupby(['Sex', 'Pclass']).median()['Age']
-    df['imp_Age'] = df.groupby(['Sex', 'Pclass'])['Age'].apply(lambda x: x.fillna(x.median()))
+    df['Age'] = df.groupby(['Sex', 'Pclass'])['Age'].apply(lambda x: x.fillna(x.median()))
     for index, value in df_pivot.iteritems():
         print(f'Imputed Sex/Pclass: {index} - Age: {value}')
     return df
 
+
 def imp_fare(df):
     """Missing values in Fare are filled with mean fare per Pclass group due to high correlation"""
     df_pivot = df.groupby(['Pclass']).mean()['Fare']
-    df['imp_Fare'] = df.groupby(['Pclass'])['Fare'].apply(lambda x: x.fillna(x.mean()))
+    df['Fare'] = df.groupby(['Pclass'])['Fare'].apply(lambda x: x.fillna(x.mean()))
     for index, value in df_pivot.iteritems():
         print(f'Imputed Pclass: {index} - Fare: {value}')
     return df

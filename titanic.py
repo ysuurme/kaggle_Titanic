@@ -4,11 +4,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder
 from sklearn.model_selection import train_test_split
 
 from functions.functions import *
 from functions.feature_eng import *
+from functions.plots import *
 
 # Loading data as pandas dataframe:
 df_train = pd.read_csv('sourceData/train.csv')  # Survival provided
@@ -17,36 +18,29 @@ df_titanic = pd.read_csv('sourceData/titanic.csv')  # Full dataset for checking 
 
 data = [df_train, df_test]
 
-# Understanding the Data:
+"""
+A. Exploratory Data Analysis:
+"""
+
+# A.1 Data overview:
 df_train.describe()
 df_train.info()
 
-"""
-Data preparation:
-"""
+df_train.drop(labels='PassengerId', axis=1, inplace=True)
+      # Conclusions:
+            # - 'PassengerId' is a mere row identifier which is dropped from the analysis
 
-df_train = enc_1hot(df_train, 'Embarked')  # one-hot encode categorical feature 'Embarked'
-df_test = enc_1hot(df_test, 'Embarked')
+# A.2 Missing values
+null_count_by_column(df_train)  # Print features for which values are null
+null_count_by_column(df_test)
+
+      # Conclusions:
+            # - For 'Cabin' the majority of data points are missing, hence imputing data would probably not add value
+            # - For 'Age' and 'Fare' missing datapoints may be imputed
+            # - For 'Embarked' only 2 values are missing which will be dropped
 
 df_train.dropna(subset=['Embarked'], inplace=True)  # Embarked contains only 2 rows with missing values
 df_test.dropna(subset=['Embarked'], inplace=True)
-
-df_train['bin_Sex'] = df_train.Sex.map({'male': 0, 'female': 1})  # Map binary 'Sex'
-df_test['bin_Sex'] = df_test.Sex.map({'male': 0, 'female': 1})
-
-df_train['Cabin_n'] = df_train.Cabin.apply(lambda x: 0 if pd.isna(x) else len(x.split(' ')))  # Count Cabins, 0 is NaN
-df_test['Cabin_n'] = df_test.Cabin.apply(lambda x: 0 if pd.isna(x) else len(x.split(' ')))
-
-df_train['Cabin_section'] = df_train.Cabin.apply(lambda x: str(x)[0])  # Retrieve section, first Cabin character
-df_test['Cabin_section'] = df_test.Cabin.apply(lambda x: str(x)[0])
-
-df_train['Name_title'] = df_train.Name.apply(lambda x: x.split(',')[1].split('.')[0].strip())  # Retrieve title from Name
-df_test['Name_title'] = df_test.Name.apply(lambda x: x.split(',')[1].split('.')[0].strip())
-
-enc = OrdinalEncoder(dtype='uint8', handle_unknown='use_encoded_value', unknown_value=99)
-enc.fit(df_train[['Name_title', 'Cabin_section']])
-df_train[['ord_Name_title', 'ord_Cabin_section']] = enc.transform(df_train[['Name_title', 'Cabin_section']])  # Ordinally encode person Title and Cabin Section
-df_test[['ord_Name_title', 'ord_Cabin_section']] = enc.transform(df_test[['Name_title', 'Cabin_section']])
 
 df_train = imp_age(df_train)  # Impute median age based on Sex/Pclass groups
 df_test = imp_age(df_test)
@@ -54,19 +48,114 @@ df_test = imp_age(df_test)
 df_train = imp_fare(df_train)  # Impute mean fare based on Pclass groups
 df_test = imp_fare(df_test)
 
+# A.3 Target Distribution
+surv = sum(df_train['Survived'])
+surv_women = df_train.loc[df_train.Sex == 'female']["Survived"]
+surv_men = df_train.loc[df_train.Sex == 'male']["Survived"]
+
+print(f'{surv} from the {len(df_train)} training observations survived the Titanic, indicating a survival rate of '
+      f'{surv/len(df_train):.2%}')
+      # Conclusions:
+            # - The minority of persons in the training set survived the Titanic
+
+# A.4 Feature Target Distribution
+print(df_train.dtypes)
+
+# A.4.1 Continuous Features
+col_cont = df_train.select_dtypes(include='float64')
+plot_hist(df_train, col_cont)
+
+for col in col_cont:
+      q = pd.qcut(df_train[col], 10)
+      print(df_train.pivot_table('Survived', index=q))
+
+      # Conclusions:
+            # - The Distribution of Age indicates that children (<16) have a higher survival rate
+            # - The Distribution of Fare indicates that a higher Fare (10.5+) indicates a higher survival rate
+
+# A.4.2 Categorical Features
+col_cat = df_train.select_dtypes(exclude='float64')
+plot_count(df_train, col_cat)
+
+print(f'{surv} from the {len(df_train)} training observations survived the Titanic, from which {sum(surv_women)}'
+      f' are female ({sum(surv_women)/surv:.2%}), and {sum(surv_men)} are male ({sum(surv_men)/surv:.2%})')
+print(f'From the total number of woman {sum(surv_women)/len(surv_women):.2%} survived, and from the total number of men'
+      f' {sum(surv_men)/len(surv_men):.2%} survived the Titanic')
+
+pivot_cat(df_train, col_cat)  # print the survival rate per categorical feature category
+
+      # Conclusions:
+            # - Female passengers have a higher survival rate than male
+            # - Passengers embarked from Cherbourg (C) have the highest survival rate
+            # - Passengers travelling with Parents or Children have a higher survival rate
+            # - Passengers travelling class 1 or 2 have a higher survival rate than passengers travelling class 3
+            # - Passengers travelling with a Sibling or Spouse have a higher survival rate
+
+# A.5 Correlation
+plot_corr(df_train)
+
+      # Conclusions:
+            # - Feature correlation indicates relationships which may be used for creating new features
+            # - Spikes in a distribution (f.i. 'Age') may be captured via a decision tree model
+            # - Ordinal relations (f.i. 'Pclass) may be captured via a linear model
+
 
 """
-Exploratory Data Analysis:
+B. Feature Engineering:
 """
-col_cat = list(df_train.select_dtypes(['object']).columns)  # Categorical columns are of type object
-col_num = list(df_train.select_dtypes(['float64', 'int64']).columns)  # Numerical columns are of type float/integer 64 bit
-col_ord = list(df_train.select_dtypes(['uint8']).columns)  # Ordinally encoded columns are of type integer 8 bit
 
-null_count_by_column(df_train)  # Print features for which values are null
-null_count_by_column(df_test)
+# B.1 Creating new features
+df_train['Family_Size'] = 1 + df_train['SibSp'] + df_train['Parch']
+plot_count(df_train, ['Family_Size'])
+
+df_train['Cabin_n'] = df_train.Cabin.apply(lambda x: 0 if pd.isna(x) else len(x.split(' ')))  # Count Cabins, 0 is NaN
+df_test['Cabin_n'] = df_test.Cabin.apply(lambda x: 0 if pd.isna(x) else len(x.split(' ')))
+plot_count(df_train, ['Cabin_n'])
+
+df_train['Cabin_section'] = df_train.Cabin.apply(lambda x: str(x)[0])  # Retrieve section, first Cabin character
+df_test['Cabin_section'] = df_test.Cabin.apply(lambda x: str(x)[0])
+plot_count(df_train, ['Cabin_section'])
+
+df_train['Name_title'] = df_train.Name.apply(lambda x: x.split(',')[1].split('.')[0].strip())  # Retrieve title from Name
+df_test['Name_title'] = df_test.Name.apply(lambda x: x.split(',')[1].split('.')[0].strip())
+plot_count(df_train, ['Name_title'])
+
+# B.2 Binning Continuous features
+df_train['bin_Fare'] = pd.qcut(df_train['Fare'], 15)
+plot_count(df_train, ['bin_Fare'])
+
+df_train['bin_Age'] = pd.qcut(df_train['Age'], 10)
+plot_count(df_train, ['bin_Age'])
+
+# B.3 Binary Encoding
+df_train['bin_Sex'] = df_train.Sex.map({'male': 0, 'female': 1})  # Map binary 'Sex'
+df_test['bin_Sex'] = df_test.Sex.map({'male': 0, 'female': 1})
+
+# B.4 Frequency Encoding
+encoding = {1: 'Alone', 2: 'Small', 3: 'Small', 4: 'Small', 5: 'Large', 6: 'Large', 7: 'Large', 8: 'Large',
+            9: 'Large', 10: 'Large', 11: 'Large', 12: 'Large'}  # Based on Countplot families of 2-4 persons are 'Small'
+df_train[f'ord_Family_Size'] = df_train['Family_Size'].map(encoding)
+
+# B. 5 Label Encoding
+col_label = ['Embarked', 'bin_Fare', 'bin_Age', 'Cabin_section', 'Name_title', 'ord_Family_Size']
+df_train = enc_label(df_train, col_label)
+
+enc = OrdinalEncoder(dtype='uint8', handle_unknown='use_encoded_value', unknown_value=99)
+enc.fit(df_train[['Name_title', 'Cabin_section']])
+df_train[['ord_Name_title', 'ord_Cabin_section']] = enc.transform(df_train[['Name_title', 'Cabin_section']])  # Ordinally encode person Title and Cabin Section
+df_test[['ord_Name_title', 'ord_Cabin_section']] = enc.transform(df_test[['Name_title', 'Cabin_section']])
+
+df_train = enc_freq(df_train, ['Ticket'])  # Indicates n people travelling with the same ticket
+df_test = enc_freq(df_test, ['Ticket'])
+
+df_train = enc_1hot(df_train, 'Embarked')  # one-hot encode categorical feature 'Embarked'
+df_test = enc_1hot(df_test, 'Embarked')
+
+
+
 
 pd.pivot_table(data=df_train[col_num], index='Survived')  # todo plot relation with Survived
-pivot_cat(df_train, col_cat)
+
 
 # Plotting the data
 # plot_hist(df_train, col_ord)  # Plot Histograms for ordinal features
@@ -76,7 +165,7 @@ pivot_cat(df_train, col_cat)
 
 
 """
-Feature Engineering:
+Model:
 """
 
 # Separate target from features
@@ -85,103 +174,6 @@ X = df_train.drop(['Survived'], axis=1)
 X_test = df_test
 
 X_train, X_test = df_train, df_test
-
-
-
-
-
-
-
-
-
-"""
-Feature engineering:
-"""
-
-
-
-
-
-print(f'Conclusion 1: "Cabin" is a NON relevant feature as the majority of observations are missing \n')
-
-
-
-# Plot Histogram for numerical features
-for col in col_num:
-      plt.clf()
-      sns.histplot(x=col, data=df_train, hue='Survived', multiple='stack', palette=['red', 'blue'])
-      plt.title(f'Survival Histogram: {col}')
-      plt.xlabel(col)
-      plt.ylabel('Survived No (0) Yes (1)')
-      plt.show()
-      plt.savefig(f'figures/EDA_Hist_{col}.png')
-
-# Plot numerical features correlation
-print(df_train[col_num].corr())
-sns.heatmap(df_train[col_num].corr())
-print(pd.pivot_table(df_train, index='Survived', values=col_num))
-
-# Plot countplot for categorical features
-for col in col_cat:
-      plt.clf()
-      sns.countplot(x=col, data=df_train, hue='Survived', palette=['red', 'blue'])
-      plt.title(f'Category count: {col}')
-      plt.xlabel(col)
-      plt.ylabel('Survived No (0) Yes (1)')
-      plt.show()
-      plt.savefig(f'figures/EDA_Count_{col}.png')
-
-
-# Determine gender based survival rate based from the 891 training observations
-surv = sum(df_train['Survived'])
-surv_women = df_train.loc[df_train.Sex == 'female']["Survived"]
-surv_men = df_train.loc[df_train.Sex == 'male']["Survived"]
-
-print(f'{surv} from the {len(df_train)} training observations survived the Titanic, from which {sum(surv_women)}'
-      f' are female ({sum(surv_women)/surv:.2%}), and {sum(surv_men)} are male ({sum(surv_men)/surv:.2%})')
-
-rate_women = sum(surv_women)/len(surv_women)
-rate_men = sum(surv_men)/len(surv_men)
-
-print(f'From the total number of woman {rate_women:.2%} survived, and from the total number of men {rate_men:.2%}'
-      f' survived the Titanic')
-
-# Plot survivors based on sex:
-_ = sns.countplot(x='Survived', data=df_train, hue='Sex')
-_ = plt.title('Titanic survivors by Sex')
-_ = plt.xlabel('Survived No (0) Yes (1)')
-_ = plt.ylabel('n Survivors')
-plt.show()
-print(f'Conclusion 2: "Sex" is A relevant feature as women seem more likely to survive the Titanic than men \n')
-
-# Plot survivors based on age:
-_ = sns.histplot(x='Age', data=df_train, hue='Survived', multiple='stack', palette=['red', 'blue'])
-_ = plt.title('Titanic survivors by Age')
-_ = plt.xlabel('Age')
-_ = plt.ylabel('Survived No (0) Yes (1)')
-plt.show()
-
-
-print(f'Conclusion 3: "Age" is A relevant feature as younger people seem more likely to survive the Titanic\n')
-
-# Price Class relation to Survival
-print(df_train[['Pclass', 'Survived']].groupby(['Pclass'], as_index=False).mean().sort_values(by='Survived',
-                                                                                              ascending=False))
-print(f'Conclusion 4: "Pclass" is A relevant feature as traveling a higher class seems to indicate that it is more'
-      f' likely to survive the Titanic\n')
-
-# Sibling relation to Survival
-print(df_train[["SibSp", "Survived"]].groupby(['SibSp'], as_index=False).mean().sort_values(by='Survived',
-                                                                                            ascending=False))
-print(f'Conclusion 5: "SibSp" is A relevant feature as having less siblings/spouses seems to indicate that it is more'
-      f' likely to survive the Titanic\n')
-
-# Parent-child relation to survival
-print(df_train[["Parch", "Survived"]].groupby(['Parch'], as_index=False).mean().sort_values(by='Survived',
-                                                                                            ascending=False))
-print(f'Conclusion 6: "Parch" is A relevant feature as traveling with parents-child seems to indicate that it is more'
-      f' likely to survive the Titanic\n')
-
 
 """"
 The steps to building and using a model are:

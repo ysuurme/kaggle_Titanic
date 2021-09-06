@@ -1,4 +1,6 @@
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def plot_mi_scores(scores):
     """"Mutual information (MI) between two random variables is a non-negative value, which measures the dependency
@@ -17,17 +19,19 @@ def plot_mi_scores(scores):
 
 
 def plot_hist(df, cols):
-    """Plot Histogram for numerical features."""
+    """Plot Histogram for continuous features."""
+    sns.set_style("whitegrid")
     for col in cols:
-        plt.clf()
-        sns.displot(x=col, data=df, hue="Survived", element="step", palette={0: "darkred", 1: "lightgreen"})
-        plt.title(f'Histogram numerical feature: {col}')
-        plt.xlabel(col)
-        plt.ylabel('Frequency')
+        fig, ax = plt.subplots(figsize=(10, 10))
+        sns.histplot(x=col, data=df, kde=True, hue="Survived", element="step", bins=20,
+                    palette={0: "darkred", 1: "lightgreen"}, ax=ax)
+        ax.set_title(f'Histogram continuous feature: {col}')
+        ax.set_xlabel(col)
+        ax.set_ylabel('Frequency')
 
-        dir = 'figures/Num_Histograms'
+        dir = 'figures/Cont_Histograms'
         os.makedirs(dir, exist_ok=True)
-        filename = str(f'Hist_ord_{col}.png')
+        filename = str(f'Hist_cont_{col}.png')
         filepath = os.path.join(dir, filename)
 
         plt.savefig(filepath)
@@ -35,14 +39,15 @@ def plot_hist(df, cols):
 
 
 def plot_count(df, cols):
-    """Plot Countplot for categorical features with."""
+    """Plot Countplot for categorical features."""
+    sns.set_style("whitegrid")
     for col in cols:
         if df[col].nunique() < 32:  # only plot categorical features with less than 32 unique values
-            plt.clf()
-            sns.countplot(x=col, hue='Survived', data=df, palette={0: "darkred", 1: "lightgreen"})
-            plt.title(f'Countplot categorical feature: {col}')
-            plt.xlabel(col)
-            plt.ylabel('Frequency')
+            fig, ax = plt.subplots(figsize=(10, 10))
+            sns.countplot(x=col, hue='Survived', data=df, palette={0: "darkred", 1: "lightgreen"}, ax=ax)
+            ax.set_title(f'Countplot categorical feature: {col}')
+            ax.set_xlabel(col)
+            ax.set_ylabel('Frequency')
 
             dir = 'figures/Cat_Countplots'
             os.makedirs(dir, exist_ok=True)
@@ -52,7 +57,7 @@ def plot_count(df, cols):
             plt.savefig(filepath)
             print(f'Countplot saved: {filepath}')
         else:
-            print(f'No plot created as #{df[col].nunique()} unique values were retrieved for Categorical Feature: {col}')
+            print(f'No plot saved as #{df[col].nunique()} unique values were retrieved for Categorical Feature: {col}')
 
 
 def plot_swarm(df, cols, y):
@@ -93,12 +98,14 @@ def plot_violin(df, cols):
     plt.savefig(filename)
     print(f'Violin saved: {filename}')
 
-def plot_corr(df, cols):
-    """Plot Heatmap for numerical features."""
-    fig, ax = plt.subplots(figsize=(11.7, 8.27))
-    sns.heatmap(ax=ax, data=df[cols].corr().round(2), annot=True, cmap='RdYlGn')
-    plt.title(f'Heatmap of numerical features:')
 
-    filename = str(f'figures/Heatmap_corr_num.png')
-    plt.savefig(filename)
-    print(f'Heatmap saved: {filename}')
+def plot_corr(df, cols=None):
+    """Plot Heatmap for numerical features."""
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=(11.7, 8.27))
+    sns.heatmap(ax=ax, data=df.corr().round(2), annot=True, cmap='RdYlGn', vmin=-1, vmax=1, center=0, linewidths=.5)
+    ax.set_title(f'Heatmap of numerical features:')
+
+    filepath = str(f'figures/Heatmap_corr.png')
+    plt.savefig(filepath)
+    print(f'Heatmap saved: {filepath}')
