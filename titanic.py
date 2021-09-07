@@ -218,7 +218,7 @@ if TRAIN:
 
 else:
     filename_model = 'trained_modelForest.sav'
-    filepath_model = os.path.join(dir, filename)
+    filepath_model = os.path.join(dir_model, filename)
     model = pickle.load(open(filepath_model, 'rb'))
     print(f'Loading pickled model: {filepath_model}')
 
