@@ -5,20 +5,27 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
-from sklearn.ensemble import RandomForestClassifier
+
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import cross_val_score, GridSearchCV
+from sklearn.feature_selection import mutual_info_regression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
+from sklearn.naive_bayes import GaussianNB
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error, \
     explained_variance_score
 
 from functions.functions import *
 from functions.feature_eng import *
 from functions.plots import *
+from functions.metrics import *
+from functions.tuning import *
 
 PLOT = False  # Mark plot is 'True' for updating the plots in folder figures
 SEED = 1  # Random seed for model training
 TRAIN = True  # Mark train is 'True' for training a model based on training data, mark 'False' for loading a pickle file
-SAVE = True  # Mark save is 'True' for pickling the trained model with a timestamp, mark 'False for not saving the model
+SAVE = False  # Mark save is 'True' for pickling the trained model with a timestamp, mark 'False for not saving the model
 
 # Loading data as pandas dataframe:
 df_train = pd.read_csv('sourceData/train.csv')  # Survival provided
@@ -70,7 +77,7 @@ print(f'{surv} from the {len(df_train)} training observations survived the Titan
 # Conclusions:
 # - The minority of persons in the training set survived the Titanic
 
-# A.4 Feature Target Distribution
+# A.4 Feature-Target Distribution
 print(df_train.dtypes)
 
 # A.4.1 Continuous Features
@@ -107,8 +114,10 @@ print(f'Correlation Matrix: \n {df_train.corr().round(2)}')
 
 # Conclusions:
 # - Feature correlation indicates relationships which may be used for creating new features
+# - Feature correlation does not indicate alarming multicollinearity
 # - Spikes in a distribution (f.i. 'Age') may be captured via a decision tree model
 # - Ordinal relations (f.i. 'Pclass) may be captured via a linear model
+# - Skewed features (f.i. Fare) may be normalized for capturing the relation towards the target
 
 # A.6 EDA Plots
 if PLOT:
@@ -147,24 +156,30 @@ df_test['bin_Fare'] = pd.qcut(df_test['Fare'], 15)
 df_train['bin_Age'] = pd.qcut(df_train['Age'], 10)
 df_test['bin_Age'] = pd.qcut(df_test['Age'], 10)
 
-# B.3 Binary Encoding
+# B.2 Binary Encoding
 df_train['bin_Sex'] = df_train.Sex.map({'male': 0, 'female': 1})  # Map binary 'Sex'
 df_test['bin_Sex'] = df_test.Sex.map({'male': 0, 'female': 1})
 
-# B.4 Frequency Encoding
+# B.3 Frequency Encoding
 encoding = {1: 'Alone', 2: 'Small', 3: 'Small', 4: 'Small', 5: 'Large', 6: 'Large', 7: 'Large', 8: 'Large',
             9: 'Large', 10: 'Large', 11: 'Large', 12: 'Large'}  # Based on Countplot families of 2-4 persons are 'Small'
 df_train[f'ord_Family_Size'] = df_train['Family_Size'].map(encoding)
 df_test[f'ord_Family_Size'] = df_test['Family_Size'].map(encoding)
 
-# B.5 Label Encoding
+# B.4 Label Encoding
 col_label = ['Embarked', 'bin_Fare', 'bin_Age', 'Cabin_section', 'Name_title', 'ord_Family_Size']
 df_train = enc_label(df_train, col_label)
 df_test = enc_label(df_test, col_label)
 
-# B.6 1-Hot Encoding
+# B.5 1-Hot Encoding
 df_train = enc_1hot(df_train, 'Embarked')  # one-hot encode categorical feature 'Embarked'
 df_test = enc_1hot(df_test, 'Embarked')
+
+df_train = enc_1hot(df_train, 'Cabin_section')  # one-hot encode categorical feature 'Cabin_section'
+df_test = enc_1hot(df_test, 'Cabin_section')
+
+# B.6 Normalizing
+df_train['norm_Fare'] = np.log(df_train['Fare'] + 1)
 
 # B.X Feature Engineering plots
 if PLOT:
@@ -174,6 +189,7 @@ if PLOT:
     plot_count(df_train, ['Name_title'])  # Plot B.1.1 Creating new features from arithmetics
     plot_count(df_train, ['bin_Fare'])  # Plot B.1.2 Creating new features from Binning Continuous features
     plot_count(df_train, ['bin_Age'])  # Plot B.1.2 Creating new features from Binning Continuous features
+    plot_hist(df_train, ['norm_Fare'])  # Plot B.6 Normalizing
 
 # Plotting the data
 # plot_corr(df_train, col_num)  # Plot Correlation Heatmap for numerical features
@@ -183,14 +199,12 @@ if PLOT:
 C. Model:
 """
 
-# C.1 Model Data selection
-y = df_train['Survived']
+# C.1 Model Data preprocessing
+y_train = df_train['Survived']
 
 feature_scope = df_test.select_dtypes(include=['float64', 'int64', 'int32', 'uint8']).columns
-X = df_train[feature_scope]
-X_test = df_test[feature_scope]  # Source data for predicting Titanic survivors
-
-X_train, X_valid, y_train, y_valid = train_test_split(X, y, random_state=SEED)  # Setup train/test data
+X = df_test[feature_scope]  # Source data for predicting Titanic survivors
+X_train = df_train[feature_scope]
 
 """"
 The steps to building and using a model are:
@@ -207,14 +221,50 @@ dir_model = 'modelsTrained/'
 if TRAIN:
 
     # C.2.1 Random Forest Classifier
-    model_Forest = RandomForestClassifier(max_depth=5, min_samples_split=4, min_samples_leaf=5, max_features='auto',
-                                          random_state=SEED)
+    base_Forest = RandomForestClassifier(random_state=SEED)
+    tune_forest(base_Forest, X_train, y_train)
 
-    # C.2.2 Model Selection
-    model = model_Forest
+    model_Forest = RandomForestClassifier(bootstrap': True, 'criterion': 'gini', 'max_depth': 15, 'max_features': 10, 'min_samples_leaf': 3, 'min_samples_split': 2, 'n_estimators': 550random_state=SEED)
 
-    # C.2.3 Model Training
-    model.fit(X_train, y_train)
+    # C.2.2 Gradient Boosting Classifier
+    base_GBC = GradientBoostingClassifier(random_state=SEED)
+
+    model_GBC = GradientBoostingClassifier(random_state=SEED)
+
+    # C.2.3 Gaussian Naive Bayes
+    base_GaussianNB = GaussianNB()
+
+    model_GaussianNB = GaussianNB()
+
+    # C.2.4 Support Vector Machine
+    base_SVC = SVC(probability=True, random_state=SEED)
+
+    model_SVC = SVC(probability=True, random_state=SEED)
+
+    # C.2.5 KNeighbhors Classifier
+    base_KNeighbhors = KNeighborsClassifier()
+    tune_kneighbors(base_KNeighbhors, X_train, y_train)
+
+    model_KNeighbhors = KNeighborsClassifier(n_neighbors=5, weights='uniform', algorithm='kd_tree', p=1)  # 0.843
+
+    # C.2.X Voting Classifier
+    base_voting_classifier = VotingClassifier(estimators=[('Forest', base_Forest), ('GBC', base_GBC),
+                                                     ('GaussianNB', base_GaussianNB), ('SVC', base_SVC),
+                                                     ('KNeighbors', base_KNeighbhors)], voting='soft')
+
+    voting_classifier = VotingClassifier(estimators=[('Forest', model_Forest), ('GBC', model_GBC),
+                                                     ('GaussianNB', model_GaussianNB), ('SVC', model_SVC),
+                                                     ('KNeighbors', model_KNeighbhors)], voting='soft')
+
+    # Model Selection
+    models_base = [base_Forest, base_GBC, base_GaussianNB, base_SVC, base_KNeighbhors, base_voting_classifier]
+
+    models = [model_Forest, model_GBC, model_GaussianNB, model_SVC, model_KNeighbhors, voting_classifier]
+
+    # Model Fit
+    models_base = model_score(models_base, X_train, y_train)
+
+    models = model_score(models, X_train, y_train)
 
 else:
     filename_model = 'trained_modelForest.sav'
@@ -222,21 +272,28 @@ else:
     model = pickle.load(open(filepath_model, 'rb'))
     print(f'Loading pickled model: {filepath_model}')
 
-predictions_train = model.predict(X_valid)
+# Model Predict
+model = voting_classifier
+predictions_train = model.predict(X_train)
 
 # C.3 Model Evaluation (metrics)
-rmse = mean_squared_error(y_true=y_valid, y_pred=predictions_train, squared=False)
-print(f'Competition score metric! Root Mean Squared Error: {rmse:.4f}')  # Best possible score is: 0.0000
-mae = mean_absolute_error(y_true=y_valid, y_pred=predictions_train)
-print(f'Mean Absolute Error: {mae:.4f}')  # Best possible score is: 0.0000
-mse = mean_squared_error(y_true=y_valid, y_pred=predictions_train, squared=True)
-print(f'Mean Squared Error: {mse:.4f}')  # Best possible score is: 0.0000
-mape = mean_absolute_percentage_error(y_true=y_valid, y_pred=predictions_train)
-print(f'Mean Absolute Percentage Error: {mape:.2%}')  # Best possible score is: 0.00%
-evs = explained_variance_score(y_true=y_valid, y_pred=predictions_train)
-print(f'Explained Variance Score: {evs:.2f}')  # Best possible score is: 1.00
+score = model.score(X_train, y_train)
+print(f'Model Score: {score:.3f}')
+cv = cross_val_score(model, X_train, y_train)
+print(f'Model Cross Validation: {cv.mean()}')
 
-# Save model to disk (pickle model)
+# C.4 Feature Evaluation
+
+mi_scores = mi_score(X_train, y_train)
+var_scores = var_score(X_train)
+
+# C.X Model Plots
+if PLOT:
+    plot_mi_scores(mi_scores)
+
+# D. Output:
+
+# D.1 Save model (pickle .sav)
 timestamp = f'{datetime.datetime.now():%d%m%y_%H%M}'
 
 if SAVE:
@@ -245,8 +302,8 @@ if SAVE:
     pickle.dump(model, open(filepath_model, 'wb'))
     print(f'Saved pickled model: {filepath_model}')
 
-# D. Output
-predictions = model.predict(X_test)
+# D.2 Save model output (.csv)
+predictions = model.predict(X)
 output = pd.DataFrame({'PassengerId': df_output.PassengerId, 'Survived': predictions})
 
 dir_output = 'outputData/'

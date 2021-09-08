@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -6,12 +7,12 @@ def plot_mi_scores(scores):
     """"Mutual information (MI) between two random variables is a non-negative value, which measures the dependency
         between the variables. It is equal to zero if and only if two random variables are independent, and higher
         values mean higher dependency."""
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=(10, 10))
     scores = scores.sort_values(ascending=True)
-    width = np.arange(len(scores))
-    ticks = list(scores.index)
-    plt.barh(width, scores)
-    plt.yticks(width, ticks)
-    plt.title("Mutual Information Scores")
+    sns.barplot(data=scores, x=list(scores.values), y=list(scores.index), ax=ax)
+    # ax.yticks(width, ticks)
+    ax.set_title("Mutual Information Scores")
 
     filename = str(f'figures/MI_Scores.png')
     plt.savefig(filename)

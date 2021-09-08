@@ -1,3 +1,34 @@
+from sklearn.model_selection import cross_val_score, GridSearchCV
+from functions.metrics import *
+
+
+def tune_forest(model, x, y, cv=5, n_jobs=-1):
+    model_score([model], x, y)
+    param_grid = {'n_estimators': [400, 450, 500, 550],
+                  'criterion': ['gini', 'entropy'],
+                  'bootstrap': [True],
+                  'max_depth': [15, 20, 25],
+                  'max_features': ['auto', 'sqrt', 10],
+                  'min_samples_leaf': [2, 3],
+                  'min_samples_split': [2, 3]}
+    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=False, n_jobs=n_jobs)
+    tuned_grid = grid_search.fit(x, y)
+    model_score([tuned_grid], x, y)
+    print(f'Tuned Parameters: {tuned_grid.best_params_}')
+
+
+def tune_kneighbors(model, x, y, cv=5, n_jobs=-1):
+    model_score([model], x, y)
+    param_grid = {'n_neighbors': [3, 5, 7, 9],
+                  'weights': ['uniform', 'distance'],
+                  'algorithm': ['auto', 'ball_tree', 'kd_tree'],
+                  'p': [1, 2]}
+    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=False, n_jobs=n_jobs)
+    tuned_grid = grid_search.fit(x, y)
+    model_score([tuned_grid], x, y)
+    print(f'Tuned Parameters: {tuned_grid.best_params_}')
+
+
 def min_forest_mae(leaf_nodes, train_X, val_X, train_y, val_y):
     """Returns the node yielding the minimal Mean Absolute Error (MAE) for given training and validation data"""
     dict_mae = {}
