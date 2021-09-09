@@ -1,6 +1,7 @@
 import pandas as pd
 from sklearn.model_selection import cross_val_score
 from sklearn.feature_selection import mutual_info_regression
+from sklearn.metrics import m
 
 
 def mi_score(X, y):

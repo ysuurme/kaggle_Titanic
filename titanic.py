@@ -222,14 +222,17 @@ if TRAIN:
 
     # C.2.1 Random Forest Classifier
     base_Forest = RandomForestClassifier(random_state=SEED)
-    tune_forest(base_Forest, X_train, y_train)
+    # tune_forest(base_Forest, X_train, y_train)
 
-    model_Forest = RandomForestClassifier(bootstrap': True, 'criterion': 'gini', 'max_depth': 15, 'max_features': 10, 'min_samples_leaf': 3, 'min_samples_split': 2, 'n_estimators': 550random_state=SEED)
+    model_Forest = RandomForestClassifier(bootstrap=True, criterion='gini', max_depth=15, max_features=10,
+                                          min_samples_leaf=3, min_samples_split=2, n_estimators=550, random_state=SEED)
 
     # C.2.2 Gradient Boosting Classifier
-    base_GBC = GradientBoostingClassifier(random_state=SEED)
+    base_GBC = GradientBoostingClassifier()
+    tune_gbc(base_GBC, X_train, y_train)
 
-    model_GBC = GradientBoostingClassifier(random_state=SEED)
+    model_GBC = GradientBoostingClassifier(max_depth=15, max_features=10, min_samples_leaf=3, min_samples_split=3,
+                                           n_estimators=250, random_state=SEED)
 
     # C.2.3 Gaussian Naive Bayes
     base_GaussianNB = GaussianNB()
@@ -243,7 +246,7 @@ if TRAIN:
 
     # C.2.5 KNeighbhors Classifier
     base_KNeighbhors = KNeighborsClassifier()
-    tune_kneighbors(base_KNeighbhors, X_train, y_train)
+    # tune_kneighbors(base_KNeighbhors, X_train, y_train)
 
     model_KNeighbhors = KNeighborsClassifier(n_neighbors=5, weights='uniform', algorithm='kd_tree', p=1)  # 0.843
 
@@ -262,7 +265,7 @@ if TRAIN:
     models = [model_Forest, model_GBC, model_GaussianNB, model_SVC, model_KNeighbhors, voting_classifier]
 
     # Model Fit
-    models_base = model_score(models_base, X_train, y_train)
+    # models_base = model_score(models_base, X_train, y_train)
 
     models = model_score(models, X_train, y_train)
 
@@ -273,7 +276,7 @@ else:
     print(f'Loading pickled model: {filepath_model}')
 
 # Model Predict
-model = voting_classifier
+model = model_GBC
 predictions_train = model.predict(X_train)
 
 # C.3 Model Evaluation (metrics)
@@ -306,11 +309,12 @@ if SAVE:
 predictions = model.predict(X)
 output = pd.DataFrame({'PassengerId': df_output.PassengerId, 'Survived': predictions})
 
-dir_output = 'outputData/'
-filename_output = f'survivor_estimation_{timestamp}.csv'
-filepath_output = os.path.join(dir_output, filename_output)
-output.to_csv(filepath_output, index=False)
-print(f'The survivor estimation of the test data was saved to {filepath_output}')
+if SAVE:
+    dir_output = 'outputData/'
+    filename_output = f'survivor_estimation_{timestamp}.csv'
+    filepath_output = os.path.join(dir_output, filename_output)
+    output.to_csv(filepath_output, index=False)
+    print(f'The survivor estimation of the test data was saved to {filepath_output}')
 
 """
 # Compare the survivor estimation against actual survivor observations

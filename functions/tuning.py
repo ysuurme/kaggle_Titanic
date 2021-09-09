@@ -17,6 +17,18 @@ def tune_forest(model, x, y, cv=5, n_jobs=-1):
     print(f'Tuned Parameters: {tuned_grid.best_params_}')
 
 
+def tune_gbc(model, x, y, cv=5, n_jobs=-1):
+    model_score([model], x, y)
+    param_grid = {'n_estimators': [100, 250, 500],
+                  'max_depth': [15, 20, 25],
+                  'max_features': ['auto', 'sqrt', 10],
+                  'min_samples_leaf': [3],
+                  'min_samples_split': [3]}
+    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=True, n_jobs=n_jobs)
+    tuned_grid = grid_search.fit(x, y)
+    model_score([tuned_grid], x, y)
+    print(f'Tuned Parameters: {tuned_grid.best_params_}')
+
 def tune_kneighbors(model, x, y, cv=5, n_jobs=-1):
     model_score([model], x, y)
     param_grid = {'n_neighbors': [3, 5, 7, 9],
