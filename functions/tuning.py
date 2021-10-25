@@ -2,43 +2,44 @@ from sklearn.model_selection import cross_val_score, GridSearchCV
 from functions.metrics import *
 
 
-def tune_forest(model, x, y, cv=5, n_jobs=-1):
-    model_score([model], x, y)
-    param_grid = {'n_estimators': [400, 450, 500, 550],
+def tune_forest(model, x, y, cv=FOLDS):
+    """Tune parameter grid for sklearn.ensemble.RandomForestClassifier"""
+    param_grid = {'n_estimators': [250, 400, 500],
                   'criterion': ['gini', 'entropy'],
                   'bootstrap': [True],
                   'max_depth': [15, 20, 25],
                   'max_features': ['auto', 'sqrt', 10],
                   'min_samples_leaf': [2, 3],
                   'min_samples_split': [2, 3]}
-    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=False, n_jobs=n_jobs)
-    tuned_grid = grid_search.fit(x, y)
-    model_score([tuned_grid], x, y)
-    print(f'Tuned Parameters: {tuned_grid.best_params_}')
+    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=True)
+    tuned_param_grid = grid_search.fit(x, y).best_params_
+    print(f'Tuned Parameters: {tuned_param_grid}')
+    return tuned_param_grid
 
 
-def tune_gbc(model, x, y, cv=5, n_jobs=-1):
-    model_score([model], x, y)
-    param_grid = {'n_estimators': [100, 250, 500],
-                  'max_depth': [15, 20, 25],
-                  'max_features': ['auto', 'sqrt', 10],
+def tune_knn(model, x, y, cv=FOLDS):
+    """Tune parameter grid for sklearn.neighbors.KNeighborsClassifier"""
+    param_grid = {'n_neighbors' : [3,5,7,9],
+                  'weights' : ['uniform', 'distance'],
+                  'algorithm' : ['auto', 'ball_tree','kd_tree'],
+                  'p' : [1,2]}
+    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=True)
+    tuned_param_grid = grid_search.fit(x, y).best_params_
+    print(f'Tuned Parameters: {tuned_param_grid}')
+    return tuned_param_grid
+
+
+def tune_gbc(model, x, y, cv=FOLDS):
+    """Tune parameter grid for sklearn.ensemble.GradientBoostingClassifier"""
+    param_grid = {'n_estimators': [100, 250],
+                  'max_depth': [15],
+                  'max_features': [10],
                   'min_samples_leaf': [3],
                   'min_samples_split': [3]}
-    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=True, n_jobs=n_jobs)
-    tuned_grid = grid_search.fit(x, y)
-    model_score([tuned_grid], x, y)
-    print(f'Tuned Parameters: {tuned_grid.best_params_}')
-
-def tune_kneighbors(model, x, y, cv=5, n_jobs=-1):
-    model_score([model], x, y)
-    param_grid = {'n_neighbors': [3, 5, 7, 9],
-                  'weights': ['uniform', 'distance'],
-                  'algorithm': ['auto', 'ball_tree', 'kd_tree'],
-                  'p': [1, 2]}
-    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=False, n_jobs=n_jobs)
-    tuned_grid = grid_search.fit(x, y)
-    model_score([tuned_grid], x, y)
-    print(f'Tuned Parameters: {tuned_grid.best_params_}')
+    grid_search = GridSearchCV(model, param_grid=param_grid, cv=cv, verbose=True)
+    tuned_param_grid = grid_search.fit(x, y).best_params_
+    print(f'Tuned Parameters: {tuned_param_grid}')
+    return tuned_param_grid
 
 
 def min_forest_mae(leaf_nodes, train_X, val_X, train_y, val_y):
@@ -53,6 +54,7 @@ def min_forest_mae(leaf_nodes, train_X, val_X, train_y, val_y):
     node = min(dict_mae, key=dict_mae.get)
     print(f'Best Fit Node modelTree: {node} - MAE: {dict_mae[node]:.0f}')
     return node
+
 
 def min_tree_mae(leaf_nodes, train_X, val_X, train_y, val_y):
     """Returns the node yielding the minimal Mean Absolute Error (MAE) for given training and validation data"""

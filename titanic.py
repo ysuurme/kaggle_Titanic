@@ -7,14 +7,14 @@ import seaborn as sns
 import pickle
 
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, OrdinalEncoder
-from sklearn.model_selection import cross_val_score, GridSearchCV
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
 from sklearn.feature_selection import mutual_info_regression
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, VotingClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_absolute_percentage_error, \
-    explained_variance_score
+from sklearn.metrics import mean_absolute_error, mean_squared_error, explained_variance_score, accuracy_score
 
 from functions.functions import *
 from functions.feature_eng import *
@@ -24,8 +24,10 @@ from functions.tuning import *
 
 PLOT = False  # Mark plot is 'True' for updating the plots in folder figures
 SEED = 1  # Random seed for model training
+TUNE = False  # Mark TUNE is 'True' for tuning model parameters using Grid Cross Validation, mark 'False' for default
 TRAIN = True  # Mark train is 'True' for training a model based on training data, mark 'False' for loading a pickle file
 SAVE = False  # Mark save is 'True' for pickling the trained model with a timestamp, mark 'False for not saving the model
+
 
 # Loading data as pandas dataframe:
 df_train = pd.read_csv('sourceData/train.csv')  # Survival provided
@@ -180,6 +182,7 @@ df_test = enc_1hot(df_test, 'Cabin_section')
 
 # B.6 Normalizing
 df_train['norm_Fare'] = np.log(df_train['Fare'] + 1)
+df_test['norm_Fare'] = np.log(df_test['Fare'] + 1)
 
 # B.X Feature Engineering plots
 if PLOT:
@@ -200,12 +203,26 @@ C. Model:
 """
 
 # C.1 Model Data preprocessing
-y_train = df_train['Survived']
+y = df_train['Survived']
 
 feature_scope = df_test.select_dtypes(include=['float64', 'int64', 'int32', 'uint8']).columns
-X = df_test[feature_scope]  # Source data for predicting Titanic survivors
-X_train = df_train[feature_scope]
+X_pred = df_test[feature_scope]
 
+df_train.drop(['Survived'], axis=1, inplace=True)
+X = df_train[feature_scope]
+
+# Setup train/test data
+X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, random_state=SEED)
+
+
+# Feature Evaluation
+# importances = pd.Series(data=model.feature_importances_, index=X_train.columns).sort_values()
+# mi_scores = mi_score(X_train, y)
+# var_scores = var_score(X_train)
+#
+# Mi Scores:
+# if PLOT:
+#     plot_mi_scores(mi_scores)
 """"
 The steps to building and using a model are:
 
@@ -218,95 +235,123 @@ Evaluate: Determine how accurate the model's predictions are.
 # C.2 Model specification
 dir_model = 'modelsTrained/'
 
-if TRAIN:
+base_tree = DecisionTreeClassifier(random_state=SEED)
+base_forest = RandomForestClassifier(random_state=SEED)
+base_gbc = GradientBoostingClassifier(random_state=SEED)
+base_svc = SVC(random_state=SEED)
+base_knn = KNeighborsClassifier()
 
-    # C.2.1 Random Forest Classifier
-    base_Forest = RandomForestClassifier(random_state=SEED)
-    # tune_forest(base_Forest, X_train, y_train)
+base_models = [base_tree, base_forest, base_gbc, base_svc, base_knn]
 
-    model_Forest = RandomForestClassifier(bootstrap=True, criterion='gini', max_depth=15, max_features=10,
-                                          min_samples_leaf=3, min_samples_split=2, n_estimators=550, random_state=SEED)
+for model in base_models:
+    model_cv_score(model, X_train, y_train)
 
-    # C.2.2 Gradient Boosting Classifier
-    base_GBC = GradientBoostingClassifier()
-    tune_gbc(base_GBC, X_train, y_train)
+# C.2 Model tuning
 
-    model_GBC = GradientBoostingClassifier(max_depth=15, max_features=10, min_samples_leaf=3, min_samples_split=3,
-                                           n_estimators=250, random_state=SEED)
+# Tune RandomForestClassifier():
+if TUNE:  # tunes parameters if True (set at Model chapter start)
+    param_grid = tune_gbc(base_knn, X_train, y_train)
+else:  # trains model based on previously tuned parameters to save computing time
+    param_grid = {'n_estimators': 250,
+                  'criterion': 'gini',
+                  'bootstrap': True,
+                  'max_depth': 15,
+                  'max_features': 10,
+                  'min_samples_leaf': 3,
+                  'min_samples_split': 3}
+    print(f'Default Parameters: {param_grid}')
 
-    # C.2.3 Gaussian Naive Bayes
-    base_GaussianNB = GaussianNB()
+tuned_forest = RandomForestClassifier(random_state=SEED).set_params(**param_grid)
+model_cv_score(tuned_forest, X_train, y_train)
 
-    model_GaussianNB = GaussianNB()
+# Tune KNeighborsClassifier():
+if TUNE:  # tunes parameters if True (set at Model chapter start)
+    param_grid = tune_gbc(base_knn, X_train, y_train)
+else:  # trains model based on previously tuned parameters to save computing time
+    param_grid = {'n_neighbors': 7,
+                  'weights': 'uniform',
+                  'algorithm': 'auto',
+                  'p': 2}
+    print(f'Default Parameters: {param_grid}')
 
-    # C.2.4 Support Vector Machine
-    base_SVC = SVC(probability=True, random_state=SEED)
+tuned_knn = KNeighborsClassifier().set_params(**param_grid)
 
-    model_SVC = SVC(probability=True, random_state=SEED)
+model_cv_score(tuned_knn, X_train, y_train)
 
-    # C.2.5 KNeighbhors Classifier
-    base_KNeighbhors = KNeighborsClassifier()
-    # tune_kneighbors(base_KNeighbhors, X_train, y_train)
+# Tune GradientBoostingClassifier()
+if TUNE:  # tunes parameters if True (set at Model chapter start)
+    param_grid = tune_gbc(base_gbc, X_train, y_train)
+else:  # trains model based on previously tuned parameters to save computing time
+    param_grid = {'n_estimators': 250,
+                  'max_depth': 15,
+                  'max_features': 'auto',
+                  'min_samples_leaf': 3,
+                  'min_samples_split': 3}
+    print(f'Default Parameters: {param_grid}')
 
-    model_KNeighbhors = KNeighborsClassifier(n_neighbors=5, weights='uniform', algorithm='kd_tree', p=1)  # 0.843
+tuned_gbc = GradientBoostingClassifier(random_state=SEED).set_params(**param_grid)
 
-    # C.2.X Voting Classifier
-    base_voting_classifier = VotingClassifier(estimators=[('Forest', base_Forest), ('GBC', base_GBC),
-                                                     ('GaussianNB', base_GaussianNB), ('SVC', base_SVC),
-                                                     ('KNeighbors', base_KNeighbhors)], voting='soft')
+model_cv_score(tuned_gbc, X_train, y_train)
 
-    voting_classifier = VotingClassifier(estimators=[('Forest', model_Forest), ('GBC', model_GBC),
-                                                     ('GaussianNB', model_GaussianNB), ('SVC', model_SVC),
-                                                     ('KNeighbors', model_KNeighbhors)], voting='soft')
+# Fit the model
+tuned_models = [tuned_forest, tuned_gbc, tuned_knn]
 
-    # Model Selection
-    models_base = [base_Forest, base_GBC, base_GaussianNB, base_SVC, base_KNeighbhors, base_voting_classifier]
+for model in tuned_models:
+    model_name = type(model).__name__
 
-    models = [model_Forest, model_GBC, model_GaussianNB, model_SVC, model_KNeighbhors, voting_classifier]
+    # Fit model
+    model.fit(X_train, y_train)
 
-    # Model Fit
-    # models_base = model_score(models_base, X_train, y_train)
+    # Predict labels
+    y_predict = model.predict(X_test)
 
-    models = model_score(models, X_train, y_train)
+    # Evaluate predict
+    print(f'Model {model_name} predict accuracy: {accuracy_score(y_test, y_predict):.2%}')  # Evaluate predict
+""" 
+A VotingClassifier takes all of the results from the models in 'classifiers' and combines the results. For a "hard" voting classifier each classifier gets a single vote for predicting
+the target variable (Survived) "Yes" (1) or "No" (0). The results is the majority of vots, hence you generally want a odd numnber of classifiers for a "hard" vote.
+A "soft" classifier averages the confidence of each of the models. If a the average confidence is > 50% that the record is labeled 1 hence the person survived, this is the final prediction.
 
-else:
-    filename_model = 'trained_modelForest.sav'
-    filepath_model = os.path.join(dir_model, filename)
-    model = pickle.load(open(filepath_model, 'rb'))
-    print(f'Loading pickled model: {filepath_model}')
+# C.2.X Voting Classifier
+base_voting_classifier = VotingClassifier(estimators=[('Forest', base_Forest), ('GBC', base_GBC),
+                                                 ('GaussianNB', base_GaussianNB), ('SVC', base_SVC),
+                                                 ('KNeighbors', base_KNeighbhors)], voting='soft')
 
-# Model Predict
-model = model_GBC
-predictions_train = model.predict(X_train)
+voting_classifier = VotingClassifier(estimators=[('Forest', model_Forest), ('GBC', model_GBC),
+                                                 ('GaussianNB', model_GaussianNB), ('SVC', model_SVC),
+                                                 ('KNeighbors', model_KNeighbhors)], voting='soft')
 
-# C.3 Model Evaluation (metrics)
-score = model.score(X_train, y_train)
-print(f'Model Score: {score:.3f}')
-cv = cross_val_score(model, X_train, y_train)
-print(f'Model Cross Validation: {cv.mean()}')
+# Model Selection
+models_base = [base_Forest, base_GBC, base_GaussianNB, base_SVC, base_KNeighbhors, base_voting_classifier]
 
-# C.4 Feature Evaluation
+models = [model_Forest, model_GBC, model_GaussianNB, model_SVC, model_KNeighbhors, voting_classifier]
 
-mi_scores = mi_score(X_train, y_train)
-var_scores = var_score(X_train)
+# Model Fit
+# models_base = model_score(models_base, X_train, y_train)
 
-# C.X Model Plots
-if PLOT:
-    plot_mi_scores(mi_scores)
+models = model_score(models, X_train, y_train)
+
+# else:
+# filename_model = 'trained_modelForest.sav'
+# filepath_model = os.path.join(dir_model, filename)
+# model = pickle.load(open(filepath_model, 'rb'))
+# print(f'Loading pickled model: {filepath_model}')
+"""
 
 # D. Output:
+model = tuned_forest
 
 # D.1 Save model (pickle .sav)
 timestamp = f'{datetime.datetime.now():%d%m%y_%H%M}'
 
 if SAVE:
-    filename_model = f'trained_modelForest_{timestamp}.sav'
+    filename_model = f'tuned_{type(model).__name__}_{timestamp}.sav'
     filepath_model = os.path.join(dir_model, filename_model)
     pickle.dump(model, open(filepath_model, 'wb'))
     print(f'Saved pickled model: {filepath_model}')
 
 # D.2 Save model output (.csv)
-predictions = model.predict(X)
+predictions = model.predict(X_pred)
 output = pd.DataFrame({'PassengerId': df_output.PassengerId, 'Survived': predictions})
 
 if SAVE:

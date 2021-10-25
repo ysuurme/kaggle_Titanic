@@ -2,9 +2,12 @@ import pandas as pd
 
 
 def null_count_by_column(df):
+    """Lists number of missing values per column if n missing values > 0"""
     print(f'DataFrame shape: {df.shape}', end='\n\n')
-    col_missing_values = (df.isnull().sum())
-    print(col_missing_values[col_missing_values > 0])
+    for col in df_train.columns:
+        n_missing = df_train[col].isnull().sum()
+        if n_missing > 0:
+            print(f'df_train[{col}] contains #{n_missing} missing values!')
 
 
 def pivot_cat(df, cols):

@@ -1,7 +1,18 @@
 import pandas as pd
+import numpy as np
+
 from sklearn.model_selection import cross_val_score
 from sklearn.feature_selection import mutual_info_regression
-from sklearn.metrics import m
+
+FOLDS = 5  # Cross validation folds used
+
+
+def model_cv_score(model, x, y, cv=FOLDS):
+    """Model mean Cross Validation score"""
+    model_name = type(model).__name__
+    cv_score = cross_val_score(model, x, y, cv=cv)
+    print(
+        f'{model_name} - #{cv} fold Cross Validation: Mean - {cv_score.mean():.2%} | Min - {np.min(cv_score):.2%} | Max - {np.max(cv_score):.2%}')
 
 
 def mi_score(X, y):
